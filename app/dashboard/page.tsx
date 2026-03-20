@@ -7,18 +7,10 @@ type ChatMessage = {
   content: string;
 };
 
-type AgentKey =
-  | "dataAnalyst"
-  | "matterMaps"
-  | "realEstate"
-  | "islt";
-
 export default function Home() {
-  const [agent, setAgent] = useState<AgentKey>("dataAnalyst");
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [previousResponseId, setPreviousResponseId] = useState<string | null>(null);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -31,25 +23,28 @@ export default function Home() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch("/api/test-openai", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-  message: trimmed,
-  agent,
-  history: [...messages, { role: "user", content: trimmed }],
-}),
+          message: trimmed,
+        }),
       });
 
-      const data = await res.json();
+      const text = await res.text();
+
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`Server returned non-JSON response: ${text.slice(0, 200)}`);
+      }
 
       if (!res.ok || !data.ok) {
         throw new Error(data.error || "Request failed");
       }
-
-      setPreviousResponseId(data.responseId ?? null);
 
       setMessages((prev) => [
         ...prev,
@@ -71,43 +66,15 @@ export default function Home() {
     }
   }
 
-  function handleAgentChange(newAgent: AgentKey) {
-    setAgent(newAgent);
-    setMessages([]);
-    setPreviousResponseId(null);
-  }
-
   return (
     <main style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ fontSize: 32,
- fontWeight: 700, marginBottom: 8 }}>
-        Ops Intelligence Command
+      <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 8 }}>
+        GPT Platform
       </h1>
 
       <p style={{ marginBottom: 20 }}>
-        Choose a GPT and start chatting
+        Basic API chat test
       </p>
-
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: "block", marginBottom: 8, fontWeight: 600 }}>
-          Select GPT
-        </label>
-        <select
-          value={agent}
-          onChange={(e) => handleAgentChange(e.target.value as AgentKey)}
-          style={{
-            padding: 12,
-            borderRadius: 8,
-            border: "1px solid #ccc",
-            minWidth: 280,
-          }}
-        >
-          <option value="dataAnalyst">DataAnalystGPT</option>
-          <option value="matterMaps">Matter Maps GPT</option>
-          <option value="realEstate">Real Estate Analyst GPT</option>
-          <option value="islt">ISLT Design and Delivery</option>
-        </select>
-      </div>
 
       <div
         style={{
@@ -119,7 +86,7 @@ export default function Home() {
         }}
       >
         {messages.length === 0 ? (
-          <p>Choose a GPT, then enter your question.</p>
+          <p>Enter a message and test the API.</p>
         ) : (
           messages.map((msg, index) => (
             <div
