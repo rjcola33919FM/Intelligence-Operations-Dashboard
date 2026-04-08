@@ -13,18 +13,27 @@ type AgentKey =
   | "realEstate"
   | "islt";
 
+const MAX_MESSAGE_LENGTH = 2000;
+
 export default function Home() {
   const [agent, setAgent] = useState<AgentKey>("dataAnalyst");
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [previousResponseId, setPreviousResponseId] = useState<string | null>(null);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
     const trimmed = message.trim();
     if (!trimmed || loading) return;
+
+    if (trimmed.length > MAX_MESSAGE_LENGTH) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `Message too long. Please keep it under ${MAX_MESSAGE_LENGTH} characters.` },
+      ]);
+      return;
+    }
 
     setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
     setMessage("");
@@ -37,10 +46,10 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-  message: trimmed,
-  agent,
-  history: [...messages, { role: "user", content: trimmed }],
-}),
+          message: trimmed,
+          agent,
+          history: [...messages, { role: "user", content: trimmed }],
+        }),
       });
 
       const data = await res.json();
@@ -49,8 +58,6 @@ export default function Home() {
         throw new Error(data.error || "Request failed");
       }
 
-      setPreviousResponseId(data.responseId ?? null);
-
       setMessages((prev) => [
         ...prev,
         {
@@ -58,12 +65,13 @@ export default function Home() {
           content: data.reply || "No response returned.",
         },
       ]);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: `[RESULT]\nError: ${error.message || "Unknown error"}`,
+          content: `Error: ${message}`,
         },
       ]);
     } finally {
@@ -74,13 +82,11 @@ export default function Home() {
   function handleAgentChange(newAgent: AgentKey) {
     setAgent(newAgent);
     setMessages([]);
-    setPreviousResponseId(null);
   }
 
   return (
     <main style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ fontSize: 32,
- fontWeight: 700, marginBottom: 8 }}>
+      <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 8 }}>
         Ops Intelligence Command
       </h1>
 
@@ -152,11 +158,14 @@ export default function Home() {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder="Ask a question..."
+          disabled={loading}
+          maxLength={MAX_MESSAGE_LENGTH}
           style={{
             flex: 1,
             padding: 12,
             border: "1px solid #ccc",
             borderRadius: 8,
+            opacity: loading ? 0.6 : 1,
           }}
         />
         <button
@@ -166,6 +175,8 @@ export default function Home() {
             padding: "12px 18px",
             borderRadius: 8,
             border: "1px solid #222",
+            cursor: loading ? "not-allowed" : "pointer",
+            opacity: loading ? 0.6 : 1,
           }}
         >
           {loading ? "Thinking..." : "Send"}

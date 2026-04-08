@@ -5,6 +5,8 @@ type ChatMessage = {
   content: string;
 };
 
+const MAX_MESSAGE_LENGTH = 2000;
+
 export async function POST(req: Request) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -24,6 +26,13 @@ export async function POST(req: Request) {
     if (!message || typeof message !== "string") {
       return Response.json(
         { ok: false, error: "A valid message is required" },
+        { status: 400 }
+      );
+    }
+
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      return Response.json(
+        { ok: false, error: "Message exceeds maximum allowed length" },
         { status: 400 }
       );
     }
@@ -60,12 +69,10 @@ export async function POST(req: Request) {
       ok: true,
       reply: response.output_text,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown server error";
     return Response.json(
-      {
-        ok: false,
-        error: error?.message ?? "Unknown server error",
-      },
+      { ok: false, error: message },
       { status: 500 }
     );
   }
