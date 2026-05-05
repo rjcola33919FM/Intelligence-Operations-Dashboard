@@ -47,6 +47,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const task: string = body?.task;
+    const selectedAgents: AgentKey[] | undefined = body?.selectedAgents;
 
     if (!task || typeof task !== "string") {
       return Response.json(
@@ -63,6 +64,57 @@ export async function POST(req: Request) {
     }
 
     const client = new OpenAI({ apiKey });
+
+    // ── Manual agent selection: skip orchestrator, run chosen agents in order ──
+    if (selectedAgents && selectedAgents.length > 0) {
+      const validKeys = selectedAgents.filter((k) => k in AGENTS);
+      const agentCalls: AgentCall[] = [];
+      let context = "";
+
+      for (const key of validKeys) {
+        const response = await callAgent(client, key, task, context || undefined);
+        agentCalls.push({ agent: key, task, context: context || undefined, response });
+        context += `\n\n=== ${AGENTS[key].name} ===\n${response}`;
+      }
+
+      // Build synthesis from collected outputs
+      let finalSynthesis = "";
+      if (agentCalls.length > 0) {
+        const agentSummaryBlock = agentCalls
+          .map((call) => `=== ${AGENTS[call.agent].name} ===\n${call.response}`)
+          .join("\n\n");
+
+        const synthesisResponse = await client.responses.create({
+          model: "gpt-4.1-mini",
+          temperature: 0.2,
+          instructions: ORCHESTRATOR_SYSTEM_PROMPT,
+          input: [
+            { role: "user", content: task },
+            {
+              role: "user",
+              content:
+                `Here are all agent responses:\n\n${agentSummaryBlock}\n\n` +
+                `Write your final synthesis using EXACTLY this structure:\n\n` +
+                agentCalls
+                  .map((call) => `## ${AGENTS[call.agent].name}\n<summary of this agent's contribution>`)
+                  .join("\n\n") +
+                `\n\n## Summary\n<2-3 sentence cross-agent conclusion>`,
+            },
+          ],
+        });
+
+        const textOutput = synthesisResponse.output.find(
+          (item): item is OpenAI.Responses.ResponseOutputMessage => item.type === "message"
+        );
+        finalSynthesis =
+          textOutput?.content
+            .filter((c): c is OpenAI.Responses.ResponseOutputText => c.type === "output_text")
+            .map((c) => c.text)
+            .join("") ?? "";
+      }
+
+      return Response.json({ ok: true, agentCalls, synthesis: finalSynthesis });
+    }
 
     // Tool definition: orchestrator calls this to invoke an agent
     const tools: OpenAI.Responses.Tool[] = [

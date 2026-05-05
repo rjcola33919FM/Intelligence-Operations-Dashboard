@@ -17,6 +17,7 @@ interface AgentCall {
 
 type Mode = "single" | "orchestrate";
 
+const ALL_AGENT_KEYS = Object.keys(AGENTS) as AgentKey[];
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_TASK_LENGTH = 4000;
 
@@ -31,6 +32,7 @@ export default function Home() {
 
   // Multi-agent state
   const [task, setTask] = useState("");
+  const [selectedAgents, setSelectedAgents] = useState<Set<AgentKey>>(new Set(ALL_AGENT_KEYS));
   const [agentCalls, setAgentCalls] = useState<AgentCall[]>([]);
   const [synthesis, setSynthesis] = useState("");
 
@@ -88,6 +90,11 @@ export default function Home() {
     const trimmed = task.trim();
     if (!trimmed || loading) return;
 
+    if (selectedAgents.size === 0) {
+      setError("Select at least one agent.");
+      return;
+    }
+
     if (trimmed.length > MAX_TASK_LENGTH) {
       setError(`Task too long. Please keep it under ${MAX_TASK_LENGTH} characters.`);
       return;
@@ -102,7 +109,10 @@ export default function Home() {
       const res = await fetch("/api/orchestrate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task: trimmed }),
+        body: JSON.stringify({
+          task: trimmed,
+          selectedAgents: Array.from(selectedAgents),
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Request failed");
@@ -114,6 +124,15 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function toggleAgent(key: AgentKey) {
+    setSelectedAgents((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   function handleAgentChange(newAgent: AgentKey) {
@@ -161,19 +180,35 @@ export default function Home() {
       {mode === "single" && (
         <>
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", marginBottom: 6, fontWeight: 600, fontSize: 14, color: "#333" }}>
+            <label style={{ display: "block", marginBottom: 8, fontWeight: 600, fontSize: 14, color: "#333" }}>
               Select Agent
             </label>
-            <select
-              value={agent}
-              onChange={(e) => handleAgentChange(e.target.value as AgentKey)}
-              style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #ccc", minWidth: 280, fontSize: 14 }}
-            >
-              {(Object.values(AGENTS)).map((a) => (
-                <option key={a.key} value={a.key}>{a.name}</option>
-              ))}
-            </select>
-            <p style={{ marginTop: 6, fontSize: 13, color: "#888" }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {ALL_AGENT_KEYS.map((key) => {
+                const a = AGENTS[key];
+                const active = agent === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => handleAgentChange(key)}
+                    style={{
+                      padding: "10px 18px",
+                      borderRadius: 8,
+                      border: active ? "2px solid #111" : "1px solid #ccc",
+                      background: active ? "#111" : "#fff",
+                      color: active ? "#fff" : "#444",
+                      fontWeight: active ? 700 : 500,
+                      fontSize: 14,
+                      cursor: "pointer",
+                      transition: "all 0.12s",
+                    }}
+                  >
+                    {a.name}
+                  </button>
+                );
+              })}
+            </div>
+            <p style={{ marginTop: 8, fontSize: 13, color: "#888" }}>
               {AGENTS[agent].description}
             </p>
           </div>
@@ -231,22 +266,63 @@ export default function Home() {
         <>
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: "block", marginBottom: 6, fontWeight: 600, fontSize: 14, color: "#333" }}>
-              Multi-Agent Task
+              Select Agents to Run
             </label>
-            <p style={{ fontSize: 13, color: "#888", marginBottom: 8 }}>
-              Describe a complex task. The orchestrator will route it to the right specialists automatically.
+            <p style={{ fontSize: 13, color: "#888", marginBottom: 10 }}>
+              Toggle which specialists to include. Selected agents run in order and share context.
             </p>
-
-            {/* Agent reference */}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-              {Object.values(AGENTS).map((a) => (
-                <span key={a.key} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 20, background: "#f0f0f0", color: "#444", border: "1px solid #e0e0e0" }}>
-                  {a.name}
-                </span>
-              ))}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+              {ALL_AGENT_KEYS.map((key) => {
+                const a = AGENTS[key];
+                const active = selectedAgents.has(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggleAgent(key)}
+                    style={{
+                      padding: "10px 18px",
+                      borderRadius: 8,
+                      border: active ? "2px solid #111" : "1px solid #ccc",
+                      background: active ? "#111" : "#fff",
+                      color: active ? "#fff" : "#666",
+                      fontWeight: active ? 700 : 500,
+                      fontSize: 14,
+                      cursor: "pointer",
+                      transition: "all 0.12s",
+                    }}
+                  >
+                    {a.name}
+                  </button>
+                );
+              })}
             </div>
+            {selectedAgents.size > 0 && (
+              <p style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>
+                {selectedAgents.size} agent{selectedAgents.size > 1 ? "s" : ""} selected
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => setSelectedAgents(new Set(ALL_AGENT_KEYS))}
+                  style={{ fontSize: 12, color: "#2563eb", background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline" }}
+                >
+                  select all
+                </button>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => setSelectedAgents(new Set())}
+                  style={{ fontSize: 12, color: "#2563eb", background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline" }}
+                >
+                  clear all
+                </button>
+              </p>
+            )}
 
             <form onSubmit={handleOrchestrate}>
+              <label style={{ display: "block", marginBottom: 6, fontWeight: 600, fontSize: 14, color: "#333" }}>
+                Task
+              </label>
               <textarea
                 value={task}
                 onChange={(e) => setTask(e.target.value)}
@@ -260,10 +336,10 @@ export default function Home() {
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
                 <button
                   type="submit"
-                  disabled={loading || !task.trim()}
-                  style={{ padding: "11px 24px", borderRadius: 8, border: "none", background: "#111", color: "#fff", fontWeight: 600, fontSize: 14, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 }}
+                  disabled={loading || !task.trim() || selectedAgents.size === 0}
+                  style={{ padding: "11px 24px", borderRadius: 8, border: "none", background: "#111", color: "#fff", fontWeight: 600, fontSize: 14, cursor: (loading || selectedAgents.size === 0) ? "not-allowed" : "pointer", opacity: (loading || selectedAgents.size === 0) ? 0.5 : 1 }}
                 >
-                  {loading ? "Running agents..." : "Run Multi-Agent Analysis →"}
+                  {loading ? "Running agents..." : `Run ${selectedAgents.size} Agent${selectedAgents.size !== 1 ? "s" : ""} →`}
                 </button>
               </div>
             </form>
@@ -272,7 +348,7 @@ export default function Home() {
           {/* Loading */}
           {loading && agentCalls.length === 0 && (
             <p style={{ color: "#888", fontSize: 14, textAlign: "center", padding: "40px 0" }}>
-              Routing task to specialists — this may take 30–60 seconds...
+              Running specialists — this may take 30–60 seconds...
             </p>
           )}
 
@@ -280,7 +356,7 @@ export default function Home() {
           {agentCalls.length > 0 && (
             <div style={{ marginTop: 24 }}>
               <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: "#333" }}>
-                Specialist Outputs — {agentCalls.length} agent{agentCalls.length > 1 ? "s" : ""} called
+                Specialist Outputs — {agentCalls.length} agent{agentCalls.length > 1 ? "s" : ""} ran
               </h2>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {agentCalls.map((call, i) => (
